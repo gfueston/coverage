@@ -1,0 +1,1194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Coverage Intelligence Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/topojson-client@3/dist/topojson-client.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg-base: #0d1117;
+      --bg-surface: #161b22;
+      --bg-panel: #1c2128;
+      --bg-card: #21262d;
+      --bg-hover: #262c36;
+      --border: #30363d;
+      --border-light: #21262d;
+      --text-primary: #e6edf3;
+      --text-secondary: #8b949e;
+      --text-muted: #656d76;
+      --accent-blue: #1d6fe0;
+      --accent-blue-light: #58a6ff;
+      --accent-purple: #8957e5;
+      --accent-purple-light: #bc8cff;
+      --accent-overlap: #1db88a;
+      --accent-overlap-light: #3fb950;
+      --accent-gap: #f85149;
+      --accent-gap-light: #ff7b72;
+      --accent-yellow: #d29922;
+      --radius: 8px;
+      --radius-sm: 4px;
+    }
+
+    html, body { height: 100%; font-family: 'Inter', system-ui, sans-serif; background: var(--bg-base); color: var(--text-primary); overflow: hidden; }
+
+    #app { display: grid; grid-template-rows: 56px 1fr; height: 100vh; }
+
+    /* ── Header ── */
+    header {
+      background: var(--bg-surface);
+      border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0 20px; gap: 16px;
+    }
+    .header-left { display: flex; align-items: center; gap: 12px; }
+    .logo-mark {
+      width: 32px; height: 32px; flex-shrink: 0;
+    }
+    header h1 { font-size: 15px; font-weight: 600; color: var(--text-primary); letter-spacing: -0.2px; }
+    .header-subtitle { font-size: 12px; color: var(--text-muted); margin-left: 4px; }
+    .header-right { display: flex; align-items: center; gap: 8px; }
+    .header-badge {
+      font-size: 11px; font-weight: 500; padding: 3px 10px; border-radius: 20px;
+      background: rgba(31,111,224,0.15); color: var(--accent-blue-light);
+      border: 1px solid rgba(31,111,224,0.3);
+    }
+
+    /* ── Main layout ── */
+    main { display: grid; grid-template-columns: 320px 1fr; overflow: hidden; }
+
+    /* ── Sidebar ── */
+    #sidebar {
+      background: var(--bg-surface);
+      border-right: 1px solid var(--border);
+      display: flex; flex-direction: column;
+      overflow-y: auto; overflow-x: hidden;
+    }
+    #sidebar::-webkit-scrollbar { width: 4px; }
+    #sidebar::-webkit-scrollbar-track { background: transparent; }
+    #sidebar::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+    .sidebar-section {
+      padding: 16px; border-bottom: 1px solid var(--border-light);
+    }
+    .sidebar-section:last-child { border-bottom: none; }
+    .section-label {
+      font-size: 10px; font-weight: 600; letter-spacing: 0.8px; text-transform: uppercase;
+      color: var(--text-muted); margin-bottom: 12px;
+    }
+
+    /* Layer toggles */
+    .layer-toggle {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 10px 12px; border-radius: var(--radius-sm);
+      margin-bottom: 6px; cursor: pointer;
+      border: 1px solid var(--border-light);
+      background: var(--bg-card);
+      transition: all 0.15s ease;
+      user-select: none;
+    }
+    .layer-toggle:hover { background: var(--bg-hover); border-color: var(--border); }
+    .layer-toggle.active { border-color: var(--layer-color); }
+    .layer-toggle-left { display: flex; align-items: center; gap: 10px; }
+    .layer-swatch {
+      width: 14px; height: 14px; border-radius: 3px; flex-shrink: 0;
+      opacity: 0.9;
+    }
+    .layer-name { font-size: 13px; font-weight: 500; color: var(--text-primary); }
+    .layer-desc { font-size: 11px; color: var(--text-muted); margin-top: 1px; }
+    .toggle-switch {
+      width: 36px; height: 20px; border-radius: 10px; background: var(--bg-hover);
+      border: 1px solid var(--border); position: relative; flex-shrink: 0;
+      transition: background 0.15s; cursor: pointer;
+    }
+    .toggle-switch.on { background: var(--layer-color); border-color: var(--layer-color); }
+    .toggle-switch::after {
+      content: ''; position: absolute; top: 2px; left: 2px;
+      width: 14px; height: 14px; border-radius: 50%; background: #fff;
+      transition: transform 0.15s;
+    }
+    .toggle-switch.on::after { transform: translateX(16px); }
+
+    /* Stats grid */
+    .stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .stat-card {
+      background: var(--bg-card); border: 1px solid var(--border-light);
+      border-radius: var(--radius-sm); padding: 12px 10px;
+    }
+    .stat-value {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 22px; font-weight: 500; line-height: 1;
+      margin-bottom: 4px;
+    }
+    .stat-label { font-size: 10px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; }
+    .stat-sub { font-size: 11px; color: var(--text-secondary); margin-top: 2px; }
+
+    /* Overlap bar */
+    .overlap-bar-container { margin-top: 4px; }
+    .overlap-bar-labels {
+      display: flex; justify-content: space-between; font-size: 10px;
+      color: var(--text-muted); margin-bottom: 6px;
+    }
+    .overlap-bar-track {
+      height: 8px; background: var(--bg-card); border-radius: 4px;
+      overflow: hidden; border: 1px solid var(--border-light);
+    }
+    .overlap-bar-fill {
+      height: 100%; background: linear-gradient(90deg, var(--accent-overlap), var(--accent-overlap-light));
+      border-radius: 4px; transition: width 1s cubic-bezier(0.23,1,0.32,1);
+    }
+
+    /* Pie chart */
+    .coverage-chart {
+      display: flex; align-items: center; gap: 16px; margin-top: 4px;
+    }
+    .pie-wrapper { flex-shrink: 0; }
+    .pie-legend { flex: 1; display: flex; flex-direction: column; gap: 6px; }
+    .pie-legend-item { display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--text-secondary); }
+    .pie-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+
+    /* Gap list */
+    .gap-list { display: flex; flex-direction: column; gap: 4px; }
+    .gap-item {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 8px 10px; border-radius: var(--radius-sm);
+      background: var(--bg-card); border: 1px solid var(--border-light);
+      cursor: pointer; transition: all 0.12s ease;
+    }
+    .gap-item:hover { background: var(--bg-hover); border-color: var(--border); }
+    .gap-item-left { display: flex; align-items: center; gap: 8px; }
+    .gap-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent-gap); flex-shrink: 0; }
+    .gap-name { font-size: 12px; font-weight: 500; color: var(--text-primary); }
+    .gap-region { font-size: 10px; color: var(--text-muted); }
+    .gap-badge {
+      font-size: 10px; padding: 2px 7px; border-radius: 20px;
+      background: rgba(248,81,73,0.12); color: var(--accent-gap-light);
+      border: 1px solid rgba(248,81,73,0.2); white-space: nowrap; flex-shrink: 0;
+    }
+    .gap-badge.opportunity {
+      background: rgba(29,184,138,0.12); color: var(--accent-overlap-light);
+      border-color: rgba(29,184,138,0.2);
+    }
+
+    /* Opacity slider */
+    .opacity-row { display: flex; align-items: center; gap: 10px; }
+    .opacity-label { font-size: 11px; color: var(--text-secondary); white-space: nowrap; min-width: 60px; }
+    input[type=range] {
+      flex: 1; height: 4px; -webkit-appearance: none; appearance: none;
+      background: var(--border); border-radius: 2px; outline: none;
+      cursor: pointer;
+    }
+    input[type=range]::-webkit-slider-thumb {
+      -webkit-appearance: none; width: 14px; height: 14px; border-radius: 50%;
+      background: var(--text-secondary); cursor: pointer;
+    }
+    .opacity-val { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--text-muted); min-width: 30px; text-align: right; }
+
+    /* ── Map ── */
+    #map-container { position: relative; width: 100%; height: 100%; }
+    #map { width: 100%; height: 100%; background: #0d1117; }
+
+    /* Leaflet dark override */
+    .leaflet-container { background: #0d1117; }
+    .leaflet-tile-pane { filter: brightness(0.3) saturate(0.4); }
+
+    /* Map legend overlay */
+    #map-legend {
+      position: absolute; bottom: 20px; right: 20px;
+      background: rgba(22,27,34,0.92); backdrop-filter: blur(12px);
+      border: 1px solid var(--border); border-radius: var(--radius);
+      padding: 14px 16px; z-index: 1000; min-width: 180px;
+    }
+    .legend-title { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.8px; color: var(--text-muted); margin-bottom: 10px; }
+    .legend-item { display: flex; align-items: center; gap: 10px; margin-bottom: 7px; font-size: 12px; color: var(--text-secondary); }
+    .legend-item:last-child { margin-bottom: 0; }
+    .legend-swatch { width: 18px; height: 12px; border-radius: 2px; flex-shrink: 0; }
+    .legend-swatch.circle { width: 12px; height: 12px; border-radius: 50%; }
+
+    /* Map tooltip */
+    .map-tooltip {
+      background: rgba(22,27,34,0.95); border: 1px solid var(--border);
+      border-radius: 6px; padding: 8px 12px; font-size: 12px;
+      color: var(--text-primary); white-space: nowrap;
+      font-family: 'Inter', sans-serif; pointer-events: none;
+    }
+    .map-tooltip strong { font-weight: 600; display: block; margin-bottom: 2px; }
+    .map-tooltip span { color: var(--text-secondary); }
+
+    /* Zoom controls */
+    .leaflet-control-zoom { border: 1px solid var(--border) !important; border-radius: var(--radius-sm) !important; overflow: hidden; }
+    .leaflet-control-zoom a { background: var(--bg-card) !important; color: var(--text-secondary) !important; border: none !important; }
+    .leaflet-control-zoom a:hover { background: var(--bg-hover) !important; color: var(--text-primary) !important; }
+
+    /* Notification toast */
+    .toast {
+      position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%) translateY(80px);
+      background: var(--bg-panel); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 10px 18px;
+      font-size: 13px; color: var(--text-primary); z-index: 9999;
+      transition: transform 0.3s cubic-bezier(0.23,1,0.32,1), opacity 0.3s;
+      opacity: 0; pointer-events: none; white-space: nowrap;
+    }
+    .toast.show { transform: translateX(-50%) translateY(0); opacity: 1; }
+
+    /* Scrollbar for sidebar */
+    #sidebar { scrollbar-width: thin; scrollbar-color: var(--border) transparent; }
+  </style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <div class="header-left">
+      <svg class="logo-mark" viewBox="0 0 32 32" fill="none" aria-label="Coverage Dashboard">
+        <rect width="32" height="32" rx="6" fill="#1d6fe0" opacity="0.15"/>
+        <circle cx="16" cy="16" r="9" stroke="#1d6fe0" stroke-width="1.5" fill="none"/>
+        <circle cx="16" cy="16" r="4" fill="#1d6fe0" opacity="0.6"/>
+        <path d="M7 16h18M16 7v18" stroke="#1d6fe0" stroke-width="1" opacity="0.4"/>
+        <circle cx="16" cy="7" r="1.5" fill="#8957e5"/>
+        <circle cx="25" cy="16" r="1.5" fill="#8957e5"/>
+        <circle cx="16" cy="25" r="1.5" fill="#1db88a"/>
+        <circle cx="7" cy="16" r="1.5" fill="#1db88a"/>
+      </svg>
+      <div>
+        <h1>Coverage Intelligence Dashboard <span class="header-subtitle">· US Market</span></h1>
+      </div>
+    </div>
+    <div class="header-right">
+      <span class="header-badge" id="active-layers-badge">3 Layers Active</span>
+    </div>
+  </header>
+
+  <main>
+    <div id="sidebar">
+
+      <!-- Layer Controls -->
+      <div class="sidebar-section">
+        <div class="section-label">Map Layers</div>
+
+        <div class="layer-toggle active" id="toggle-a" style="--layer-color: #1d6fe0" onclick="toggleLayer('a')">
+          <div class="layer-toggle-left">
+            <div class="layer-swatch" style="background: #1d6fe0;"></div>
+            <div>
+              <div class="layer-name">Company A</div>
+              <div class="layer-desc">County-fill coverage</div>
+            </div>
+          </div>
+          <div class="toggle-switch on" id="switch-a" style="--layer-color: #1d6fe0"></div>
+        </div>
+
+        <div class="layer-toggle active" id="toggle-b" style="--layer-color: #8957e5" onclick="toggleLayer('b')">
+          <div class="layer-toggle-left">
+            <div class="layer-swatch" style="background: #8957e5;"></div>
+            <div>
+              <div class="layer-name">Company B</div>
+              <div class="layer-desc">Corridor &amp; metro network</div>
+            </div>
+          </div>
+          <div class="toggle-switch on" id="switch-b" style="--layer-color: #8957e5"></div>
+        </div>
+
+        <div class="layer-toggle active" id="toggle-overlap" style="--layer-color: #1db88a" onclick="toggleLayer('overlap')">
+          <div class="layer-toggle-left">
+            <div class="layer-swatch" style="background: #1db88a;"></div>
+            <div>
+              <div class="layer-name">Overlap Zone</div>
+              <div class="layer-desc">Both companies present</div>
+            </div>
+          </div>
+          <div class="toggle-switch on" id="switch-overlap" style="--layer-color: #1db88a"></div>
+        </div>
+
+        <div class="layer-toggle" id="toggle-gaps" style="--layer-color: #f85149" onclick="toggleLayer('gaps')">
+          <div class="layer-toggle-left">
+            <div class="layer-swatch" style="background: #f85149;"></div>
+            <div>
+              <div class="layer-name">Coverage Gaps</div>
+              <div class="layer-desc">No current coverage</div>
+            </div>
+          </div>
+          <div class="toggle-switch" id="switch-gaps" style="--layer-color: #f85149"></div>
+        </div>
+      </div>
+
+      <!-- Opacity controls -->
+      <div class="sidebar-section">
+        <div class="section-label">Layer Opacity</div>
+        <div style="display:flex; flex-direction:column; gap:10px;">
+          <div class="opacity-row">
+            <span class="opacity-label" style="color:#58a6ff;">Company A</span>
+            <input type="range" min="10" max="100" value="65" id="opacity-a" oninput="updateOpacity('a', this.value)" />
+            <span class="opacity-val" id="opacity-a-val">65%</span>
+          </div>
+          <div class="opacity-row">
+            <span class="opacity-label" style="color:#bc8cff;">Company B</span>
+            <input type="range" min="10" max="100" value="60" id="opacity-b" oninput="updateOpacity('b', this.value)" />
+            <span class="opacity-val" id="opacity-b-val">60%</span>
+          </div>
+          <div class="opacity-row">
+            <span class="opacity-label" style="color:#3fb950;">Overlap</span>
+            <input type="range" min="10" max="100" value="75" id="opacity-overlap" oninput="updateOpacity('overlap', this.value)" />
+            <span class="opacity-val" id="opacity-overlap-val">75%</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Coverage Stats -->
+      <div class="sidebar-section">
+        <div class="section-label">Coverage Statistics</div>
+        <div class="stats-grid">
+          <div class="stat-card">
+            <div class="stat-value" style="color: #58a6ff;">43</div>
+            <div class="stat-label">States (Co. A)</div>
+            <div class="stat-sub">84% of states</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value" style="color: #bc8cff;">43</div>
+            <div class="stat-label">States (Co. B)</div>
+            <div class="stat-sub">84% of states</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value" style="color: #3fb950;">38</div>
+            <div class="stat-label">Overlap States</div>
+            <div class="stat-sub">75% of states</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value" style="color: #f85149;">3</div>
+            <div class="stat-label">Gap States</div>
+            <div class="stat-sub">AK, ID, ND uncovered</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Overlap percentage bar -->
+      <div class="sidebar-section">
+        <div class="section-label">Overlap Analysis</div>
+        <div class="overlap-bar-container">
+          <div class="overlap-bar-labels">
+            <span>Co. A Only: 10%</span>
+            <span>Overlap: 74%</span>
+            <span>Co. B Only: 10%</span>
+          </div>
+          <div style="display:flex; gap:3px; height:8px; border-radius:4px; overflow:hidden;">
+            <div style="width:10%; background:#1d6fe0; border-radius:4px 0 0 4px;"></div>
+            <div style="width:74%; background:linear-gradient(90deg,#1db88a,#3fb950);"></div>
+            <div style="width:10%; background:#8957e5;"></div>
+            <div style="width:4%; background:#f85149; border-radius:0 4px 4px 0;"></div>
+          </div>
+          <div style="display:flex; justify-content:space-between; font-size:10px; color:var(--text-muted); margin-top:5px;">
+            <span>5 states A-only</span>
+            <span>38 states shared</span>
+            <span>5 states B-only</span>
+          </div>
+        </div>
+
+        <div class="coverage-chart" style="margin-top:14px;">
+          <svg class="pie-wrapper" width="72" height="72" viewBox="0 0 72 72" id="pie-chart">
+            <!-- Rendered by JS -->
+          </svg>
+          <div class="pie-legend">
+            <div class="pie-legend-item"><div class="pie-dot" style="background:#3fb950;"></div>Overlap Zone (74%)</div>
+            <div class="pie-legend-item"><div class="pie-dot" style="background:#58a6ff;"></div>Co. A Only (10%)</div>
+            <div class="pie-legend-item"><div class="pie-dot" style="background:#bc8cff;"></div>Co. B Only (10%)</div>
+            <div class="pie-legend-item"><div class="pie-dot" style="background:#f85149;"></div>Gaps: AK, ID, ND (6%)</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Geographic Gaps -->
+      <div class="sidebar-section">
+        <div class="section-label">Geographic Gaps &amp; Opportunities</div>
+        <div class="gap-list">
+          <div class="gap-item" onclick="flyToRegion('great-plains')">
+            <div class="gap-item-left">
+              <div class="gap-dot"></div>
+              <div>
+                <div class="gap-name">AK · ID · ND</div>
+                <div class="gap-region">No coverage by either company</div>
+              </div>
+            </div>
+            <div class="gap-badge">Gap</div>
+          </div>
+          
+          <div class="gap-item" onclick="flyToRegion('midwest-rural')">
+            <div class="gap-item-left">
+              <div class="gap-dot" style="background: var(--accent-yellow);"></div>
+              <div>
+                <div class="gap-name">Midwest Rural Corridor</div>
+                <div class="gap-region">NE · KS · IA rural</div>
+              </div>
+            </div>
+            <div class="gap-badge opportunity">Opportunity</div>
+          </div>
+          <div class="gap-item" onclick="flyToRegion('northwest')">
+            <div class="gap-item-left">
+              <div class="gap-dot" style="background: var(--accent-yellow);"></div>
+              <div>
+                <div class="gap-name">Pacific Northwest Interior</div>
+                <div class="gap-region">Eastern WA · OR · N. CA</div>
+              </div>
+            </div>
+            <div class="gap-badge opportunity">Opportunity</div>
+          </div>
+          <div class="gap-item" onclick="flyToRegion('new-england')">
+            <div class="gap-item-left">
+              <div class="gap-dot" style="background: var(--accent-yellow);"></div>
+              <div>
+                <div class="gap-name">Northern New England</div>
+                <div class="gap-region">ME · VT · NH rural</div>
+              </div>
+            </div>
+            <div class="gap-badge opportunity">Opportunity</div>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- end sidebar -->
+
+    <!-- Map -->
+    <div id="map-container">
+      <div id="map"></div>
+      <div id="map-legend">
+        <div class="legend-title">Layer Key</div>
+        <div class="legend-item"><div class="legend-swatch" style="background:#1d6fe0; opacity:0.75;"></div>Company A Coverage</div>
+        <div class="legend-item"><div class="legend-swatch" style="background:#8957e5; opacity:0.7;"></div>Company B Network</div>
+        <div class="legend-item"><div class="legend-swatch" style="background:#1db88a; opacity:0.8;"></div>Overlap Zone</div>
+        <div class="legend-item"><div class="legend-swatch" style="background:#f85149; opacity:0.65;"></div>Coverage Gap</div>
+        <div class="legend-item"><div class="legend-swatch circle" style="background:#f5c518;"></div>B Network Node</div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ── Coverage Data ─────────────────────────────────────────────────────────────
+// Based on visual analysis of the provided maps
+// Company A: blue county-fill (dense SE, NE, Pacific coast, parts of Midwest/South)
+// Company B: purple corridor/metro network (follows major interstates, large metros)
+
+const COMPANY_A_STATES = [
+  'AL','AR','AZ','CA','CO','CT','DC','DE','FL','GA','HI','IA','IL','IN',
+  'KY','LA','MA','MD','ME','MI','MN','MO','MS','NC','NH','NJ','NM','NV',
+  'NY','OH','OK','OR','PA','RI','SC','TN','TX','UT','VA','VT','WA','WI','WV'
+];
+
+const COMPANY_B_STATES = [
+  'AL','AR','AZ','CA','CO','CT','DC','DE','FL','GA','IA','IL','IN',
+  'KS','KY','LA','MA','MD','MI','MN','MO','MS','MT','NC','NE','NJ','NM','NV',
+  'NY','OH','OK','OR','PA','SC','SD','TN','TX','UT','VA','WA','WI','WV','WY'
+];
+
+// States where NEITHER company has strong coverage
+// GAP states: ND and AK — not in A or B
+const GAP_STATES = ['ND','AK','ID'];
+
+// States where ONLY A has coverage
+const A_ONLY_STATES = COMPANY_A_STATES.filter(s => !COMPANY_B_STATES.includes(s));
+// States where ONLY B has coverage
+const B_ONLY_STATES = COMPANY_B_STATES.filter(s => !COMPANY_A_STATES.includes(s));
+// States where BOTH have coverage
+const OVERLAP_STATES = COMPANY_A_STATES.filter(s => COMPANY_B_STATES.includes(s));
+
+// Company B corridor nodes (major metro/highway junctions)
+const COMPANY_B_NODES = [
+  // West Coast
+  {lat:47.61,lng:-122.33,name:'Seattle, WA'}, {lat:45.52,lng:-122.68,name:'Portland, OR'},
+  {lat:37.77,lng:-122.42,name:'San Francisco, CA'}, {lat:34.05,lng:-118.24,name:'Los Angeles, CA'},
+  {lat:32.72,lng:-117.16,name:'San Diego, CA'}, {lat:36.17,lng:-115.14,name:'Las Vegas, NV'},
+  {lat:33.45,lng:-112.07,name:'Phoenix, AZ'}, {lat:32.22,lng:-110.97,name:'Tucson, AZ'},
+  // Mountain/Southwest
+  {lat:39.74,lng:-104.98,name:'Denver, CO'}, {lat:40.76,lng:-111.89,name:'Salt Lake City, UT'},
+  {lat:35.69,lng:-105.94,name:'Santa Fe, NM'}, {lat:35.08,lng:-106.65,name:'Albuquerque, NM'},
+  // Texas
+  {lat:29.76,lng:-95.37,name:'Houston, TX'}, {lat:30.27,lng:-97.74,name:'Austin, TX'},
+  {lat:29.42,lng:-98.49,name:'San Antonio, TX'}, {lat:32.78,lng:-96.80,name:'Dallas, TX'},
+  {lat:32.73,lng:-97.33,name:'Fort Worth, TX'}, {lat:31.76,lng:-106.49,name:'El Paso, TX'},
+  // Midwest
+  {lat:41.85,lng:-87.65,name:'Chicago, IL'}, {lat:43.05,lng:-76.15,name:'Syracuse, NY'},
+  {lat:44.98,lng:-93.27,name:'Minneapolis, MN'}, {lat:41.26,lng:-95.94,name:'Omaha, NE'},
+  {lat:39.10,lng:-94.58,name:'Kansas City, MO'}, {lat:38.63,lng:-90.20,name:'St. Louis, MO'},
+  {lat:39.96,lng:-82.99,name:'Columbus, OH'}, {lat:41.50,lng:-81.69,name:'Cleveland, OH'},
+  {lat:42.33,lng:-83.05,name:'Detroit, MI'}, {lat:43.05,lng:-89.40,name:'Madison, WI'},
+  {lat:43.05,lng:-76.15,name:'Buffalo, NY'},
+  // South
+  {lat:30.33,lng:-81.66,name:'Jacksonville, FL'}, {lat:27.95,lng:-82.46,name:'Tampa, FL'},
+  {lat:25.77,lng:-80.19,name:'Miami, FL'}, {lat:30.69,lng:-88.04,name:'Mobile, AL'},
+  {lat:32.78,lng:-86.76,name:'Montgomery, AL'}, {lat:32.07,lng:-81.09,name:'Savannah, GA'},
+  {lat:33.75,lng:-84.39,name:'Atlanta, GA'}, {lat:35.23,lng:-80.84,name:'Charlotte, NC'},
+  {lat:36.17,lng:-86.78,name:'Nashville, TN'}, {lat:35.15,lng:-90.05,name:'Memphis, TN'},
+  {lat:30.46,lng:-91.14,name:'Baton Rouge, LA'}, {lat:29.95,lng:-90.07,name:'New Orleans, LA'},
+  {lat:35.47,lng:-97.52,name:'Oklahoma City, OK'}, {lat:36.15,lng:-95.99,name:'Tulsa, OK'},
+  // Northeast
+  {lat:40.71,lng:-74.01,name:'New York, NY'}, {lat:39.95,lng:-75.17,name:'Philadelphia, PA'},
+  {lat:39.29,lng:-76.61,name:'Baltimore, MD'}, {lat:38.91,lng:-77.04,name:'Washington, DC'},
+  {lat:42.36,lng:-71.06,name:'Boston, MA'}, {lat:41.31,lng:-72.93,name:'New Haven, CT'},
+  {lat:41.82,lng:-71.42,name:'Providence, RI'}, {lat:40.44,lng:-79.99,name:'Pittsburgh, PA'},
+  {lat:43.16,lng:-77.62,name:'Rochester, NY'},
+  // Southeast
+  {lat:35.78,lng:-78.64,name:'Raleigh, NC'}, {lat:34.00,lng:-81.03,name:'Columbia, SC'},
+  {lat:33.00,lng:-80.00,name:'Charleston, SC'}, {lat:36.85,lng:-76.29,name:'Norfolk, VA'},
+  {lat:37.54,lng:-77.43,name:'Richmond, VA'}
+];
+
+// ── Map Setup ─────────────────────────────────────────────────────────────────
+const map = L.map('map', {
+  center: [38.5, -98.35],
+  zoom: 4,
+  zoomControl: true,
+  attributionControl: false,
+  preferCanvas: true
+});
+
+// Subtle dark tile layer
+L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png', {
+  opacity: 0.5
+}).addTo(map);
+
+// Light state name labels
+L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_only_labels/{z}/{x}/{y}{r}.png', {
+  opacity: 0.4
+}).addTo(map);
+
+// Layer groups
+const layerGroups = {
+  a: L.layerGroup().addTo(map),
+  b: L.layerGroup().addTo(map),
+  overlap: L.layerGroup().addTo(map),
+  gaps: L.layerGroup()
+};
+const layerVisible = { a: true, b: true, overlap: true, gaps: false };
+let layerOpacity = { a: 0.65, b: 0.60, overlap: 0.75, gaps: 0.60 };
+
+// ── Load TopoJSON and draw ─────────────────────────────────────────────────────
+fetch('https://cdn.jsdelivr.net/npm/us-atlas@3/states-10m.json')
+  .then(r => r.json())
+  .then(us => {
+    const states = topojson.feature(us, us.objects.states);
+    
+    // FIPS → abbreviation map
+    const fipsToAbbr = {
+      '01':'AL','02':'AK','04':'AZ','05':'AR','06':'CA','08':'CO','09':'CT',
+      '10':'DE','11':'DC','12':'FL','13':'GA','15':'HI','16':'ID','17':'IL',
+      '18':'IN','19':'IA','20':'KS','21':'KY','22':'LA','23':'ME','24':'MD',
+      '25':'MA','26':'MI','27':'MN','28':'MS','29':'MO','30':'MT','31':'NE',
+      '32':'NV','33':'NH','34':'NJ','35':'NM','36':'NY','37':'NC','38':'ND',
+      '39':'OH','40':'OK','41':'OR','42':'PA','44':'RI','45':'SC','46':'SD',
+      '47':'TN','48':'TX','49':'UT','50':'VT','51':'VA','53':'WA','54':'WV',
+      '55':'WI','56':'WY'
+    };
+
+    states.features.forEach(feature => {
+      const fips = feature.id ? String(feature.id).padStart(2,'0') : null;
+      const abbr = fips ? fipsToAbbr[fips] : null;
+      if (!abbr) return;
+
+      const inA = COMPANY_A_STATES.includes(abbr);
+      const inB = COMPANY_B_STATES.includes(abbr);
+      const isGap = !inA && !inB;
+      const isOverlap = inA && inB;
+
+      // ── Company A layer ──
+      if (inA) {
+        const aLayer = L.geoJSON(feature, {
+          style: {
+            fillColor: isOverlap ? '#1d6fe0' : '#1d6fe0',
+            fillOpacity: layerOpacity.a * (isOverlap ? 0.6 : 0.9),
+            color: '#58a6ff',
+            weight: 0.5,
+            opacity: 0.4
+          }
+        });
+        aLayer.on('mouseover', function(e) {
+          showTooltip(e, abbr, inA, inB, isGap);
+          this.setStyle({ fillOpacity: Math.min(layerOpacity.a + 0.15, 1), weight: 1.5, opacity: 0.8 });
+        });
+        aLayer.on('mouseout', function() {
+          this.setStyle({ fillOpacity: layerOpacity.a * (isOverlap ? 0.6 : 0.9), weight: 0.5, opacity: 0.4 });
+          hideTooltip();
+        });
+        layerGroups.a.addLayer(aLayer);
+      }
+
+      // ── Company B (state background tint) ──
+      if (inB && !isOverlap) {
+        const bLayer = L.geoJSON(feature, {
+          style: {
+            fillColor: '#8957e5',
+            fillOpacity: layerOpacity.b * 0.35,
+            color: '#bc8cff',
+            weight: 0.5,
+            opacity: 0.3
+          }
+        });
+        bLayer.on('mouseover', function(e) {
+          showTooltip(e, abbr, inA, inB, isGap);
+        });
+        bLayer.on('mouseout', hideTooltip);
+        layerGroups.b.addLayer(bLayer);
+      }
+
+      // ── Overlap layer ──
+      if (isOverlap) {
+        const olLayer = L.geoJSON(feature, {
+          style: {
+            fillColor: '#1db88a',
+            fillOpacity: layerOpacity.overlap * 0.45,
+            color: '#3fb950',
+            weight: 1,
+            opacity: 0.5
+          }
+        });
+        olLayer.on('mouseover', function(e) {
+          showTooltip(e, abbr, inA, inB, isGap);
+          this.setStyle({ fillOpacity: layerOpacity.overlap * 0.65, weight: 1.5, opacity: 0.8 });
+        });
+        olLayer.on('mouseout', function() {
+          this.setStyle({ fillOpacity: layerOpacity.overlap * 0.45, weight: 1, opacity: 0.5 });
+          hideTooltip();
+        });
+        layerGroups.overlap.addLayer(olLayer);
+      }
+
+      // ── Gap layer ──
+      if (isGap) {
+        const gapLayer = L.geoJSON(feature, {
+          style: {
+            fillColor: '#f85149',
+            fillOpacity: 0.50,
+            color: '#ff7b72',
+            weight: 1,
+            opacity: 0.6,
+            dashArray: '4 3'
+          }
+        });
+        gapLayer.on('mouseover', function(e) {
+          showTooltip(e, abbr, inA, inB, isGap);
+          this.setStyle({ fillOpacity: 0.7, weight: 1.5 });
+        });
+        gapLayer.on('mouseout', function() {
+          this.setStyle({ fillOpacity: 0.50, weight: 1 });
+          hideTooltip();
+        });
+        layerGroups.gaps.addLayer(gapLayer);
+      }
+    });
+
+    drawPieChart();
+  });
+
+// ── Company B Corridor Nodes ──────────────────────────────────────────────────
+COMPANY_B_NODES.forEach(node => {
+  const circle = L.circleMarker([node.lat, node.lng], {
+    radius: 4,
+    fillColor: '#f5c518',
+    color: '#8957e5',
+    weight: 1,
+    fillOpacity: 0.85,
+    opacity: 0.9
+  });
+  circle.bindTooltip(`<div class="map-tooltip"><strong>${node.name}</strong><span>Company B Node</span></div>`, {
+    permanent: false, direction: 'top', offset: [0, -4], opacity: 1
+  });
+  layerGroups.b.addLayer(circle);
+});
+
+// Draw B corridor lines (simplified highway routes)
+const corridors = [
+  // I-95 corridor (East Coast)
+  [[47.5,-70.2],[45.3,-69.5],[42.36,-71.06],[41.31,-72.93],[41.82,-71.42],
+   [40.71,-74.01],[39.95,-75.17],[39.29,-76.61],[38.91,-77.04],[36.85,-76.29],
+   [35.78,-78.64],[33.75,-84.39],[32.07,-81.09],[29.76,-81.32],[25.77,-80.19]],
+  // I-10 corridor (Southern)
+  [[34.05,-118.24],[33.45,-112.07],[32.22,-110.97],[31.76,-106.49],
+   [29.42,-98.49],[29.76,-95.37],[30.46,-91.14],[29.95,-90.07],[30.69,-88.04],
+   [30.33,-81.66]],
+  // I-80 corridor (Northern)
+  [[37.77,-122.42],[39.74,-104.98],[41.26,-95.94],[41.85,-87.65],
+   [41.50,-81.69],[40.44,-79.99],[40.71,-74.01]],
+  // I-40 / mid corridor
+  [[34.05,-118.24],[35.08,-106.65],[35.47,-97.52],[35.15,-90.05],
+   [35.23,-80.84],[35.78,-78.64]],
+  // I-35 / central
+  [[44.98,-93.27],[41.26,-95.94],[39.10,-94.58],[35.47,-97.52],
+   [32.78,-96.80],[30.27,-97.74],[29.42,-98.49]],
+  // I-90 (North)
+  [[47.61,-122.33],[45.52,-118],[46.88,-110],[44.98,-93.27],[42.33,-83.05],
+   [41.50,-81.69],[43.16,-77.62],[42.36,-71.06]],
+  // Southeast connections
+  [[33.75,-84.39],[36.17,-86.78],[39.96,-82.99],[39.29,-76.61]],
+  [[33.75,-84.39],[35.23,-80.84],[37.54,-77.43],[38.91,-77.04]],
+  // Texas internal
+  [[32.78,-96.80],[32.73,-97.33],[30.27,-97.74],[29.76,-95.37]]
+];
+
+corridors.forEach(latlngs => {
+  const line = L.polyline(latlngs, {
+    color: '#8957e5',
+    weight: 2,
+    opacity: 0.55,
+    dashArray: null
+  });
+  layerGroups.b.addLayer(line);
+});
+
+// ── Tooltip ────────────────────────────────────────────────────────────────────
+const tooltip = L.tooltip({ permanent: false, direction: 'top', className: '' });
+let tooltipOpen = false;
+
+const stateNames = {
+  AL:'Alabama',AK:'Alaska',AZ:'Arizona',AR:'Arkansas',CA:'California',CO:'Colorado',
+  CT:'Connecticut',DE:'Delaware',DC:'Wash. DC',FL:'Florida',GA:'Georgia',HI:'Hawaii',
+  ID:'Idaho',IL:'Illinois',IN:'Indiana',IA:'Iowa',KS:'Kansas',KY:'Kentucky',
+  LA:'Louisiana',ME:'Maine',MD:'Maryland',MA:'Massachusetts',MI:'Michigan',
+  MN:'Minnesota',MS:'Mississippi',MO:'Missouri',MT:'Montana',NE:'Nebraska',
+  NV:'Nevada',NH:'New Hampshire',NJ:'New Jersey',NM:'New Mexico',NY:'New York',
+  NC:'North Carolina',ND:'North Dakota',OH:'Ohio',OK:'Oklahoma',OR:'Oregon',
+  PA:'Pennsylvania',RI:'Rhode Island',SC:'South Carolina',SD:'South Dakota',
+  TN:'Tennessee',TX:'Texas',UT:'Utah',VT:'Vermont',VA:'Virginia',WA:'Washington',
+  WV:'West Virginia',WI:'Wisconsin',WY:'Wyoming'
+};
+
+function showTooltip(e, abbr, inA, inB, isGap) {
+  const status = isGap ? '⚠ No Coverage' : (inA && inB ? '✓ Both Companies' : (inA ? '✓ Company A Only' : '✓ Company B Only'));
+  const color = isGap ? '#f85149' : (inA && inB ? '#3fb950' : (inA ? '#58a6ff' : '#bc8cff'));
+  const content = `<div style="font-family:Inter,sans-serif;font-size:12px;background:#1c2128;border:1px solid #30363d;border-radius:6px;padding:8px 12px;min-width:130px;">
+    <strong style="display:block;font-weight:600;color:#e6edf3;margin-bottom:3px;">${stateNames[abbr] || abbr}</strong>
+    <span style="color:${color};">${status}</span>
+  </div>`;
+  L.popup({ closeButton: false, className: 'map-popup', offset: [0,-2] })
+    .setLatLng(e.latlng)
+    .setContent(content)
+    .openOn(map);
+}
+function hideTooltip() {
+  map.closePopup();
+}
+
+// ── Layer Toggle ──────────────────────────────────────────────────────────────
+function toggleLayer(id) {
+  layerVisible[id] = !layerVisible[id];
+  const sw = document.getElementById('switch-' + id);
+  const tog = document.getElementById('toggle-' + id);
+  if (layerVisible[id]) {
+    sw.classList.add('on');
+    tog.classList.add('active');
+    if (id === 'gaps') layerGroups[id].addTo(map);
+    else layerGroups[id].addTo(map);
+  } else {
+    sw.classList.remove('on');
+    tog.classList.remove('active');
+    map.removeLayer(layerGroups[id]);
+  }
+  // Update badge
+  const count = Object.values(layerVisible).filter(Boolean).length;
+  document.getElementById('active-layers-badge').textContent = count + ' Layer' + (count !== 1 ? 's' : '') + ' Active';
+}
+
+// ── Opacity Control ────────────────────────────────────────────────────────────
+function updateOpacity(id, val) {
+  layerOpacity[id] = val / 100;
+  document.getElementById('opacity-' + id + '-val').textContent = val + '%';
+  // Re-style all layers in the group
+  layerGroups[id].eachLayer(layer => {
+    if (layer.setStyle) {
+      if (id === 'a') layer.setStyle({ fillOpacity: layerOpacity.a * 0.75 });
+      if (id === 'b') layer.setStyle({ opacity: layerOpacity.b * 0.9 });
+      if (id === 'overlap') layer.setStyle({ fillOpacity: layerOpacity.overlap * 0.5 });
+    }
+    if (layer.setOpacity) layer.setOpacity(layerOpacity[id]);
+  });
+}
+
+// ── Fly to region ─────────────────────────────────────────────────────────────
+const regionCoords = {
+  'alaska':        { center: [64, -153], zoom: 4 },
+  'mountain-west': { center: [44, -112], zoom: 5 },
+  'great-plains':  { center: [47, -100], zoom: 5 },
+  'midwest-rural': { center: [41, -96],  zoom: 5 },
+  'northwest':     { center: [46, -118], zoom: 5 },
+  'new-england':   { center: [44.5, -70], zoom: 6 }
+};
+
+function flyToRegion(id) {
+  const r = regionCoords[id];
+  if (r) {
+    map.flyTo(r.center, r.zoom, { duration: 1.2, easeLinearity: 0.3 });
+    showToast('Zoomed to region');
+  }
+}
+
+// ── Pie chart (SVG) ────────────────────────────────────────────────────────────
+function drawPieChart() {
+  const data = [
+    { pct: 0.74, color: '#1db88a' },
+    { pct: 0.10, color: '#1d6fe0' },
+    { pct: 0.10, color: '#8957e5' },
+    { pct: 0.06, color: '#f85149' }
+  ];
+  const cx = 36, cy = 36, r = 30;
+  let startAngle = -Math.PI / 2;
+  let pathData = '';
+  data.forEach(d => {
+    if (d.pct === 0) return;
+    const endAngle = startAngle + d.pct * 2 * Math.PI;
+    const x1 = cx + r * Math.cos(startAngle);
+    const y1 = cy + r * Math.sin(startAngle);
+    const x2 = cx + r * Math.cos(endAngle);
+    const y2 = cy + r * Math.sin(endAngle);
+    const large = d.pct > 0.5 ? 1 : 0;
+    pathData += `<path d="M${cx},${cy} L${x1},${y1} A${r},${r} 0 ${large},1 ${x2},${y2} Z" fill="${d.color}" opacity="0.85"/>`;
+    startAngle = endAngle;
+  });
+  // Donut hole
+  pathData += `<circle cx="${cx}" cy="${cy}" r="16" fill="#1c2128"/>`;
+  document.getElementById('pie-chart').innerHTML = pathData;
+}
+
+// ── Toast ─────────────────────────────────────────────────────────────────────
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2200);
+}
+
+// Remove default leaflet attribution
+map.attributionControl.remove();
+</script>
+<script data-pplx-inline-edit>
+(function () {
+  if (window === window.top) return;
+
+  const allowedParentOrigins = ["https://www.perplexity.ai","https://perplexity.ai","https://testing.perplexity.ai","https://staging.perplexity.ai","https://*.preview.i.perplexity.ai","http://localhost:3000","http://127.0.0.1:3000","http://localhost:5173","http://127.0.0.1:5173"];
+  const MAX_FONT_BYTES = 500 * 1024;
+  const MAX_TOTAL_FONT_BYTES = 2 * 1024 * 1024;
+  let scrollForwarding = false;
+  let scrollRaf = 0;
+  let trustedTopOrigin = null;
+
+  // Allow entries like "https://*.preview.i.perplexity.ai" — the wildcard
+  // matches a single DNS label (no dots), so "https://*.foo" cannot stretch
+  // across multiple labels.
+  function matchesAllowedOrigin(origin) {
+    if (!origin) return false;
+    for (const entry of allowedParentOrigins) {
+      if (!entry.includes("*")) {
+        if (entry === origin) return true;
+        continue;
+      }
+      const pattern = new RegExp(
+        "^" +
+          entry.replace(/[.+?^${}()|[\]\\]/g, "\\$&").replace(/\*/g, "[^.]+") +
+          "$",
+      );
+      if (pattern.test(origin)) return true;
+    }
+    return false;
+  }
+
+  // Trust decision: when the sender is same-origin-visible (event.origin is a
+  // real origin like https://www.perplexity.ai) we trust event.origin directly.
+  // When event.origin is "null" (opaque broker srcdoc), we fall back to the
+  // broker's stamped `parentOrigin` to identify the top window. The fallback
+  // is claim-only — we rely on the browser's native `targetOrigin` enforcement
+  // on the response path (see postToTrustedTop) to ensure replies can't be
+  // delivered to anyone but the actual top window of that claimed origin.
+  function getTrustedParentOrigin(event) {
+    const forwardedParentOrigin =
+      typeof event.data.parentOrigin === "string" ? event.data.parentOrigin : null;
+    const parentOrigin = event.origin === "null" ? forwardedParentOrigin : event.origin;
+    return matchesAllowedOrigin(parentOrigin) ? parentOrigin : null;
+  }
+
+  // All responses go to window.top with targetOrigin = the allowlisted origin.
+  // An attacker that iframes us inside their own null-origin broker can claim
+  // any parentOrigin they like, but the browser will drop the reply whenever
+  // the real top's origin doesn't match — so the screenshot never leaves.
+  function postToTrustedTop(message) {
+    if (!trustedTopOrigin) return;
+    try {
+      window.top.postMessage(message, trustedTopOrigin);
+    } catch (_error) {}
+  }
+
+  function inlineAll(original, clone) {
+    if (original.nodeType !== 1 || clone.nodeType !== 1) return;
+
+    try {
+      const computedStyle = getComputedStyle(original);
+      // cssText on a computed style is the serialized declaration in modern
+      // Chromium/Safari — a single read beats enumerating ~400 longhand
+      // properties. Firefox returns "" here, so we fall back on empty.
+      const serialized = computedStyle.cssText;
+      if (serialized) {
+        clone.style.cssText = serialized;
+      } else {
+        const parts = new Array(computedStyle.length);
+        for (let index = 0; index < computedStyle.length; index += 1) {
+          const property = computedStyle[index];
+          parts[index] = `${property}:${computedStyle.getPropertyValue(property)};`;
+        }
+        clone.style.cssText = parts.join("");
+      }
+    } catch (_error) {}
+
+    const originalChildren = original.children;
+    const clonedChildren = clone.children;
+    for (
+      let index = 0;
+      index < originalChildren.length && index < clonedChildren.length;
+      index += 1
+    ) {
+      inlineAll(originalChildren[index], clonedChildren[index]);
+    }
+  }
+
+  function extractFontUrl(srcValue) {
+    const matches = [
+      ...srcValue.matchAll(
+        /url\(["']?([^"')]+)["']?\)(?:\s*format\(["']?([^"')]+)["']?\))?/gi,
+      ),
+    ];
+    if (matches.length === 0) return null;
+    const woff2 = matches.find((m) => m[2] && m[2].toLowerCase().includes("woff2"));
+    if (woff2) return woff2[1];
+    const woff = matches.find((m) => m[2] && m[2].toLowerCase().includes("woff"));
+    if (woff) return woff[1];
+    return matches[0][1];
+  }
+
+  // Cache resolved font URL -> data URI across captures. Fonts on a page
+  // essentially never change, and a batch run emits multiple captures back to
+  // back — without this we'd refetch + re-base64 every time.
+  const fontDataUriCache = new Map();
+  const SRC_DECLARATION_RE = /src\s*:\s*[^;}]+/i;
+
+  async function fetchAsDataUri(url) {
+    if (fontDataUriCache.has(url)) return fontDataUriCache.get(url);
+    let dataUri = null;
+    try {
+      const response = await fetch(url, { mode: "cors", credentials: "omit" });
+      if (response.ok) {
+        const blob = await response.blob();
+        if (blob.size <= MAX_FONT_BYTES) {
+          dataUri = await new Promise((resolve) => {
+            const reader = new FileReader();
+            reader.onloadend = () =>
+              resolve(typeof reader.result === "string" ? reader.result : null);
+            reader.onerror = () => resolve(null);
+            reader.readAsDataURL(blob);
+          });
+        }
+      }
+    } catch (_error) {
+      dataUri = null;
+    }
+    fontDataUriCache.set(url, dataUri);
+    return dataUri;
+  }
+
+  function collectFontFaceRuleTexts() {
+    const rules = [];
+    for (const sheet of document.styleSheets) {
+      let cssRules;
+      try {
+        cssRules = sheet.cssRules;
+      } catch (_error) {
+        continue;
+      }
+      if (!cssRules) continue;
+      for (const rule of cssRules) {
+        const cssText = rule.cssText || "";
+        if (cssText.startsWith("@font-face")) rules.push(cssText);
+      }
+    }
+    return rules;
+  }
+
+  async function buildInlinedFontCss() {
+    const ruleTexts = collectFontFaceRuleTexts();
+    if (ruleTexts.length === 0) return null;
+
+    const resolved = ruleTexts.map((cssText) => {
+      if (!SRC_DECLARATION_RE.test(cssText)) return null;
+      const srcMatch = cssText.match(/src\s*:\s*([^;}]+)[;}]/i);
+      if (!srcMatch) return null;
+      const url = extractFontUrl(srcMatch[1]);
+      if (!url) return null;
+      try {
+        return { cssText, url: new URL(url, document.baseURI).href };
+      } catch (_error) {
+        return null;
+      }
+    });
+
+    const dataUris = await Promise.all(
+      resolved.map((entry) => (entry ? fetchAsDataUri(entry.url) : Promise.resolve(null))),
+    );
+
+    const inlined = [];
+    let totalBytes = 0;
+    for (let index = 0; index < resolved.length; index += 1) {
+      const entry = resolved[index];
+      const dataUri = dataUris[index];
+      if (!entry || !dataUri) continue;
+      const approxBytes = dataUri.length * 0.75;
+      if (totalBytes + approxBytes > MAX_TOTAL_FONT_BYTES) break;
+      totalBytes += approxBytes;
+      inlined.push(entry.cssText.replace(SRC_DECLARATION_RE, `src: url("${dataUri}")`));
+    }
+    return inlined.length > 0 ? inlined.join("\n") : null;
+  }
+
+  function stripExternal(clone) {
+    const images = clone.querySelectorAll("img");
+    for (let index = 0; index < images.length; index += 1) {
+      const src = images[index].getAttribute("src");
+      if (src && !src.startsWith("data:")) images[index].removeAttribute("src");
+    }
+
+    const elements = clone.querySelectorAll("*");
+    for (let index = 0; index < elements.length; index += 1) {
+      const style = elements[index].style.cssText;
+      if (style && style.includes("url(")) {
+        elements[index].style.cssText = style.replace(
+          /url\(["']?(?!data:)[^)"']*["']?\)/gi,
+          "none",
+        );
+      }
+    }
+  }
+
+  function emitScroll() {
+    scrollRaf = 0;
+    if (!scrollForwarding) return;
+    postToTrustedTop({
+      type: "INLINE_EDIT_SCROLL",
+      scrollX: window.scrollX,
+      scrollY: window.scrollY,
+    });
+  }
+
+  window.addEventListener(
+    "scroll",
+    function () {
+      if (!scrollForwarding || scrollRaf) return;
+      scrollRaf = requestAnimationFrame(emitScroll);
+    },
+    { passive: true, capture: true },
+  );
+
+  async function handleCaptureRequest(event) {
+    const requestId = event.data.requestId;
+    const scrollX = window.scrollX;
+    const scrollY = window.scrollY;
+    const width = window.innerWidth;
+    const height = window.innerHeight;
+
+    function postResult(dataUrl) {
+      postToTrustedTop({
+        type: "INLINE_EDIT_SCREENSHOT_RESULT",
+        requestId,
+        dataUrl,
+        scrollX,
+        scrollY,
+      });
+    }
+
+    try {
+      // Wait for any pending web fonts to resolve so both inline metrics and
+      // the @font-face inlining below see the same loaded faces.
+      if (document.fonts && document.fonts.ready) {
+        try {
+          await document.fonts.ready;
+        } catch (_error) {}
+      }
+
+      const clone = document.documentElement.cloneNode(true);
+      inlineAll(document.documentElement, clone);
+
+      const removedNodes = clone.querySelectorAll("script,link[rel=\"stylesheet\"],style");
+      for (let index = 0; index < removedNodes.length; index += 1) {
+        removedNodes[index].remove();
+      }
+
+      stripExternal(clone);
+
+      // Re-embed web fonts as data-URI @font-face rules so the SVG rasterizer
+      // can resolve them — external font URLs aren't fetched during
+      // foreignObject rendering, which would otherwise force a fallback face
+      // and change text metrics.
+      const inlinedFontCss = await buildInlinedFontCss();
+      if (inlinedFontCss) {
+        const styleEl = document.createElement("style");
+        styleEl.textContent = inlinedFontCss;
+        const head = clone.querySelector("head");
+        if (head) head.appendChild(styleEl);
+        else clone.insertBefore(styleEl, clone.firstChild);
+      }
+
+      const html = new XMLSerializer().serializeToString(clone);
+      const svg =
+        `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}">` +
+        '<foreignObject width="100%" height="100%">' +
+        `<div xmlns="http://www.w3.org/1999/xhtml" style="width:${width}px;height:${height}px;overflow:hidden">` +
+        `<div style="position:relative;left:-${scrollX}px;top:-${scrollY}px">` +
+        html +
+        "</div></div></foreignObject></svg>";
+      const svgUrl = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+      const image = new Image();
+      image.onload = function () {
+        const canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+        canvas.getContext("2d").drawImage(image, 0, 0);
+        postResult(canvas.toDataURL("image/png"));
+      };
+      image.onerror = function () {
+        postResult(null);
+      };
+      image.src = svgUrl;
+    } catch (_error) {
+      postResult(null);
+    }
+  }
+
+  window.addEventListener("message", function (event) {
+    if (!event.data) return;
+    // Only accept messages from the direct parent frame. Blocks sibling /
+    // unrelated-window postMessage senders that could otherwise reach us.
+    if (event.source !== window.parent) return;
+
+    const trustedParentOrigin = getTrustedParentOrigin(event);
+    if (!trustedParentOrigin) return;
+    trustedTopOrigin = trustedParentOrigin;
+
+    if (event.data.type === "INLINE_EDIT_SCROLL_START") {
+      scrollForwarding = true;
+      emitScroll();
+      return;
+    }
+
+    if (event.data.type === "INLINE_EDIT_SCROLL_STOP") {
+      scrollForwarding = false;
+      if (scrollRaf) cancelAnimationFrame(scrollRaf);
+      scrollRaf = 0;
+      return;
+    }
+
+    if (event.data.type !== "INLINE_EDIT_CAPTURE_REQUEST") return;
+
+    handleCaptureRequest(event);
+  });
+})();
+
+
+</script></body>
+</html>
